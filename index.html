@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemberGift Admin</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;background:#f2f4f7;color:#222;padding:20px}
+.container{max-width:800px;margin:auto}
+h1{color:#075e54;margin-bottom:5px}
+.subtitle{margin-top:0;color:#666}
+input{width:100%;padding:12px;margin-top:10px;border:1px solid #ccc;border-radius:8px;font-size:16px}
+button{padding:10px 15px;border:0;border-radius:8px;background:#075e54;color:#fff;margin-top:8px;cursor:pointer;font-size:14px}
+button:hover{opacity:.9}
+button.secondary{background:#777}
+button.danger{background:#c62828}
+.member{background:#fff;padding:15px;margin-top:15px;border-radius:12px;box-shadow:0 2px 8px #0002}
+.member h3{margin:0 0 8px}
+.gift{color:#d18b00;font-weight:bold;margin-top:8px}
+.taken{color:#188038;font-weight:bold;margin-top:8px}
+.hasil{margin-top:15px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:15px 0}
+.stat{background:#fff;padding:14px;border-radius:10px;text-align:center;box-shadow:0 2px 6px #0001}
+.stat strong{display:block;font-size:22px;color:#075e54}
+.empty{text-align:center;color:#777;padding:30px}
+hr{border:0;border-top:1px solid #ddd;margin:25px 0}
+@media(max-width:600px){body{padding:12px}.stats{grid-template-columns:1fr}.actions button{flex:1}}
+
+/* Login & settings */
+#loginScreen{position:fixed;inset:0;background:#f2f4f7;display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999}
+.login-box{width:100%;max-width:400px;background:#fff;padding:25px;border-radius:16px;box-shadow:0 4px 18px #0002}
+.login-box h2{margin:0 0 6px;color:#075e54}
+.login-box p{color:#666;margin-top:0}
+.login-box input{margin-top:10px}
+.login-box button{width:100%;margin-top:12px}
+.login-error{color:#c62828;margin-top:10px;display:none}
+#adminApp{display:none}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.topbar .admin-actions{display:flex;gap:8px;flex-wrap:wrap}
+.topbar button{margin-top:0}
+.settings-box{background:#fff;padding:18px;border-radius:12px;box-shadow:0 2px 8px #0002;margin-top:15px;display:none}
+.settings-box h3{margin-top:0;color:#075e54}
+.settings-msg{margin-top:10px;font-weight:bold}
+
+</style>
+</head>
+<body>
+<div id="loginScreen">
+  <div class="login-box">
+    <h2>🔐 Login Admin</h2>
+    <p>Masuk untuk mengelola MemberGift.</p>
+    <input id="loginPassword" type="password" placeholder="Masukkan sandi admin"
+           onkeydown="if(event.key==='Enter') loginAdmin()">
+    <button onclick="loginAdmin()">Masuk</button>
+    <div id="loginError" class="login-error">Sandi admin salah.</div>
+  </div>
+</div>
+
+<div id="adminApp">
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <h1>🎁 MemberGift</h1>
+        <p class="subtitle">Aplikasi Admin Member</p>
+      </div>
+      <div class="admin-actions">
+        <button class="secondary" onclick="toggleSettings()">⚙️ Pengaturan</button>
+        <button class="danger" onclick="logoutAdmin()">Keluar</button>
+      </div>
+    </div>
+
+    <div id="settingsBox" class="settings-box">
+      <h3>⚙️ Pengaturan Admin</h3>
+      <p>Ubah sandi login admin.</p>
+      <input id="oldPassword" type="password" placeholder="Sandi lama">
+      <input id="newPassword" type="password" placeholder="Sandi baru">
+      <input id="confirmPassword" type="password" placeholder="Ulangi sandi baru">
+      <button onclick="changeAdminPassword()">Simpan Sandi</button>
+      <button class="secondary" onclick="toggleSettings()">Tutup</button>
+      <div id="settingsMsg" class="settings-msg"></div>
+    </div>
+
+    <div id="memberAppContent">
+      <div class="stats">
+        <div class="stat"><strong id="totalMember">0</strong>Total Member</div>
+        <div class="stat"><strong id="totalPembelian">0</strong>Total Pembelian</div>
+        <div class="stat"><strong id="totalGift">0</strong>Gift Diambil</div>
+      </div>
+
+      <button onclick="tambahMember()">+ Tambah Member</button>
+
+      <h3>🔎 Cari Member</h3>
+      <input id="inputID" type="text" placeholder="Masukkan ID atau nama member" onkeydown="if(event.key==='Enter') cariMember()">
+      <button onclick="cariMember()">Cari Member</button>
+      <button class="secondary" onclick="resetPencarian()">Reset</button>
+
+      <div id="hasilPencarian" class="hasil"></div>
+      <hr>
+      <div id="daftarMember"></div>
+    </div>
+  </div>
+</div>
+<script>
+/* =========================
+   LOGIN ADMIN
+   ========================= */
+const ADMIN_PASSWORD_KEY = "memberGiftAdminPassword";
+const DEFAULT_ADMIN_PASSWORD = "admin123";
+
+function getAdminPassword(){
+  return localStorage.getItem(ADMIN_PASSWORD_KEY) || DEFAULT_ADMIN_PASSWORD;
+}
+
+function isAdminLoggedIn(){
+  return sessionStorage.getItem("memberGiftAdminLoggedIn") === "true";
+}
+
+function showAdminApp(){
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("adminApp").style.display = "block";
+  tampilkanMember();
+}
+
+function loginAdmin(){
+  const password = document.getElementById("loginPassword").value;
+  const error = document.getElementById("loginError");
+
+  if(password === getAdminPassword()){
+    sessionStorage.setItem("memberGiftAdminLoggedIn","true");
+    error.style.display = "none";
+    document.getElementById("loginPassword").value = "";
+    showAdminApp();
+  }else{
+    error.textContent = "Sandi admin salah.";
+    error.style.display = "block";
+  }
+}
+
+function logoutAdmin(){
+  sessionStorage.removeItem("memberGiftAdminLoggedIn");
+  document.getElementById("adminApp").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+  document.getElementById("loginPassword").value = "";
+  document.getElementById("settingsBox").style.display = "none";
+}
+
+function toggleSettings(){
+  const box = document.getElementById("settingsBox");
+  box.style.display = box.style.display === "none" || !box.style.display ? "block" : "none";
+  document.getElementById("settingsMsg").textContent = "";
+}
+
+function changeAdminPassword(){
+  const oldPassword = document.getElementById("oldPassword").value;
+  const newPassword = document.getElementById("newPassword").value;
+  const confirmPassword = document.getElementById("confirmPassword").value;
+  const msg = document.getElementById("settingsMsg");
+
+  if(oldPassword !== getAdminPassword()){
+    msg.style.color = "#c62828";
+    msg.textContent = "Sandi lama salah.";
+    return;
+  }
+  if(newPassword.length < 6){
+    msg.style.color = "#c62828";
+    msg.textContent = "Sandi baru minimal 6 karakter.";
+    return;
+  }
+  if(newPassword !== confirmPassword){
+    msg.style.color = "#c62828";
+    msg.textContent = "Konfirmasi sandi tidak sama.";
+    return;
+  }
+
+  localStorage.setItem(ADMIN_PASSWORD_KEY, newPassword);
+  document.getElementById("oldPassword").value = "";
+  document.getElementById("newPassword").value = "";
+  document.getElementById("confirmPassword").value = "";
+  msg.style.color = "#188038";
+  msg.textContent = "Sandi admin berhasil diubah.";
+}
+
+/* =========================
+   MEMBERGIFT — FITUR LAMA
+   ========================= */
+let members = JSON.parse(localStorage.getItem("members") || "[]");
+
+function simpanData(){
+  localStorage.setItem("members", JSON.stringify(members));
+}
+
+function buatID(){
+  let id;
+  do {
+    id = "MG-" + Math.random().toString(36).substring(2,10).toUpperCase();
+  } while(members.some(m => m.id === id));
+  return id;
+}
+
+function tambahMember(){
+  const nama = prompt("Masukkan nama member:");
+  if(!nama || !nama.trim()) return;
+
+  const member = {
+    nama: nama.trim(),
+    id: buatID(),
+    pembelian: 0,
+    gift3: false,
+    gift7: false,
+    gift10: false
+  };
+
+  members.push(member);
+  simpanData();
+  tampilkanMember();
+
+  alert("Member berhasil ditambahkan!\n\nNama: " + member.nama + "\nID Member: " + member.id);
+}
+
+function tambahPembelian(index){
+  const member = members[index];
+
+  if(member.pembelian >= 10){
+    alert("Kartu sudah mencapai 10 pembelian.");
+    return;
+  }
+
+  member.pembelian++;
+  simpanData();
+  tampilkanMember();
+
+  if([3,7,10].includes(member.pembelian)){
+    alert("🎁 SELAMAT!\n\n" + member.nama +
+      " mendapatkan GIFT pada pembelian ke-" + member.pembelian);
+  }
+}
+
+function ambilGift(index, nomorGift){
+  const member = members[index];
+  const key = "gift" + nomorGift;
+
+  if(member[key]){
+    alert("Gift ini sudah ditandai sebagai diambil.");
+    return;
+  }
+
+  if(member.pembelian < nomorGift){
+    alert("Member belum mencapai pembelian ke-" + nomorGift + ".");
+    return;
+  }
+
+  if(!confirm("Tandai Gift ke-" + nomorGift + " sebagai SUDAH DIAMBIL?")) return;
+
+  member[key] = true;
+  simpanData();
+  tampilkanMember();
+}
+
+function hapusMember(index){
+  const member = members[index];
+
+  if(!confirm("Hapus member " + member.nama + " (" + member.id + ")?")) return;
+
+  members.splice(index,1);
+  simpanData();
+  tampilkanMember();
+  resetPencarian();
+}
+
+function cariMember(){
+  const query = document.getElementById("inputID").value.trim().toUpperCase();
+  const hasil = document.getElementById("hasilPencarian");
+
+  if(!query){
+    hasil.innerHTML = "";
+    return;
+  }
+
+  const ditemukan = members.filter(member =>
+    member.id.toUpperCase().includes(query) ||
+    member.nama.toUpperCase().includes(query)
+  );
+
+  if(!ditemukan.length){
+    hasil.innerHTML = '<div class="member">❌ Member tidak ditemukan.</div>';
+    return;
+  }
+
+  hasil.innerHTML = ditemukan.map(member => `
+    <div class="member">
+      <h3>👤 ${escapeHTML(member.nama)}</h3>
+      <div>🆔 ${escapeHTML(member.id)}</div>
+      <div>🛒 Pembelian: ${member.pembelian}/10</div>
+      ${statusGift(member,3)}
+      ${statusGift(member,7)}
+      ${statusGift(member,10)}
+    </div>
+  `).join("");
+}
+
+function statusGift(member, nomor){
+  if(member.pembelian < nomor) return "";
+
+  if(member["gift"+nomor]){
+    return `<div class="taken">✅ Gift ke-${nomor} sudah diambil</div>`;
+  }
+
+  return `<div class="gift">🎁 Gift ke-${nomor} tersedia</div>`;
+}
+
+function resetPencarian(){
+  document.getElementById("inputID").value = "";
+  document.getElementById("hasilPencarian").innerHTML = "";
+}
+
+function tampilkanMember(){
+  const daftar = document.getElementById("daftarMember");
+  daftar.innerHTML = "";
+
+  if(!members.length){
+    daftar.innerHTML = '<div class="empty">Belum ada member.</div>';
+  }
+
+  members.forEach((member,index) => {
+    let hadiah = "";
+
+    [3,7,10].forEach(nomor => {
+      if(member.pembelian >= nomor){
+        if(member["gift"+nomor]){
+          hadiah += `<div class="taken">✅ Gift ke-${nomor} sudah diambil</div>`;
+        }else{
+          hadiah += `
+            <div class="gift">${nomor === 10 ? "🏆" : "🎁"} Gift ke-${nomor} tersedia</div>
+            <button onclick="ambilGift(${index},${nomor})">Gift Sudah Diambil</button>
+          `;
+        }
+      }
+    });
+
+    daftar.innerHTML += `
+      <div class="member">
+        <h3>👤 ${escapeHTML(member.nama)}</h3>
+        <div>🆔 ${escapeHTML(member.id)}</div>
+        <div>🛒 Pembelian: ${member.pembelian}/10</div>
+        ${hadiah}
+        <div class="actions">
+          <button onclick="tambahPembelian(${index})" ${member.pembelian>=10 ? "disabled" : ""}>
+            +1 Pembelian
+          </button>
+          <button class="danger" onclick="hapusMember(${index})">Hapus Member</button>
+        </div>
+      </div>
+    `;
+  });
+
+  updateStats();
+}
+
+function updateStats(){
+  document.getElementById("totalMember").textContent = members.length;
+
+  const pembelian = members.reduce((total,m) => total + m.pembelian,0);
+  const gift = members.reduce((total,m) =>
+    total + (m.gift3?1:0) + (m.gift7?1:0) + (m.gift10?1:0),0);
+
+  document.getElementById("totalPembelian").textContent = pembelian;
+  document.getElementById("totalGift").textContent = gift;
+}
+
+function escapeHTML(value){
+  return String(value).replace(/[&<>"']/g, char => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[char]));
+}
+
+/* Tampilkan login saat pertama kali membuka halaman. */
+if(isAdminLoggedIn()){
+  showAdminApp();
+}else{
+  document.getElementById("loginScreen").style.display = "flex";
+}
+</script>
+</body>
+</html>
